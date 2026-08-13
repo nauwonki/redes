@@ -31,7 +31,7 @@ def parse_HTTP_message(http_message: bytes):
         start_line_parsed["version"] = start_line_parts[2]
 
     #Headers restantes
-    headers = header[1:]
+    headers = [line for line in header[1:] if line]
 
     return {
         "tipo": message,
@@ -53,14 +53,78 @@ def create_HTTP_message(parsed_message):
     else:
         start_line = f"{start_line_parsed['version']} {start_line_parsed['codigo']} {start_line_parsed['texto']}"
 
-    #Pasar body a bytes
-    body_to_bytes = str(body).encode()
+    body_to_bytes = body
 
     #Construir headers
     header_lines = [start_line]
+    for h in headers:
+        header_lines.append(h)
 
     #Unir head y pasar a bytes
     head_to_bytes = ("\r\n".join(header_lines) + "\r\n\r\n").encode()
 
     #Unir head y body
     return head_to_bytes + body_to_bytes
+
+
+#Socket servidor tcp
+def receive_full_message(connection_socket, buff_size, end_sequence):
+    recv_message = connection_socket.recv(buff_size)
+    full_message = recv_message
+
+    is_end_of_message = contains_end_of_message(full_message, end_sequence)
+
+    while not is_end_of_message and len(recv_message) > 0:
+        recv_message = connection_socket.recv(buff_size)
+
+        full_message += recv_message
+
+        is_end_of_message = contains_end_of_message(full_message, end_sequence)
+
+    return full_message
+
+def contains_end_of_message(message, end_sequence):
+    return end_sequence in message
+
+
+if __name__ == "__main__":
+    buff_size = 1024
+    end_of_message = b"\r\n\r\n"
+    new_socket_address = ('127.0.0.1', 8000)
+
+    print('Creando socket - Servidor')
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    server_socket.bind(new_socket_address)
+    server_socket.listen(3)
+
+    print('... Esperando clientes')
+    while True:
+        new_socket, client_address = server_socket.accept()
+        print(f"Conexion desde: {client_address}")
+        recv_message = receive_full_message(new_socket, buff_size, end_of_message)
+
+        print("Request recibida")
+        print(recv_message)
+
+        if len(recv_message) > 0:
+            print("ejecutando parse HTTP")
+            parsed_dict = parse_HTTP_message(recv_message)
+            
+            print(f"tipo: {parsed_dict.get('tipo')}")
+            print(f"start line: {parsed_dict.get('start_line')}")
+            print(f"headers: {parsed_dict.get('headers')}")
+            print(f"body: {parsed_dict.get('body')}")
+
+            print("ejecutando create HTTP")
+            create_bytes = create_HTTP_message(parsed_dict)
+
+            print(create_bytes)
+
+            if recv_message == create_bytes:
+                print("Si")
+            else:
+                print("No")
+        
+        new_socket.close()
+        print(f"conexion con {client_address} ha sido cerrada")

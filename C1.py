@@ -143,6 +143,7 @@ if __name__ == "__main__":
                 "headers": [
                     f"Content-type: {content_type}",
                     f"Content-length: {content_length}",
+                    "X-ElQuePregunta: Nahuel Won",
                     "Connection: close"
                 ],
                 "body": body_byte

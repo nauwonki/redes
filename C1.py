@@ -68,6 +68,8 @@ def create_HTTP_message(parsed_message):
 
 
 #Socket servidor tcp
+#Analogo al tcp_socket_server.py de EOL pero los decodes ya se hacen en parse HTTP
+#y sin remove_end_of_message porque queremos diferenciar \r\n\r\n
 def receive_full_message(connection_socket, buff_size, end_sequence):
     recv_message = connection_socket.recv(buff_size)
     full_message = recv_message
@@ -109,22 +111,62 @@ if __name__ == "__main__":
 
         if len(recv_message) > 0:
             print("ejecutando parse HTTP")
+            #Al recibir mensaje, parsearlo
             parsed_dict = parse_HTTP_message(recv_message)
+            #HTML para ser mostrado en el navegador
+            html = """<!DOCTYPE html>
+                    <html lang="es">
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>CC4303</title>
+                    </head>
+                    <body>
+                        <h1>Bienvenide ... oh? no puedo ver tu nombre :c!</h1>
+                        <h3><a href="replace">¿Qué es un proxy?</a></h3>
+                    </body>
+                    </html> """
+            body_byte = html.encode()
+
+            #Content length es el largo del html en bytes
+            content_length = len(body_byte)
+            #Content type siempre es text/html
+            content_type = "text/html"
+
+            #Armar estructura del response
+            responses = {
+                "tipo": "Response",
+                "start_line": {
+                    "version": "HTTP/1.1",
+                    "codigo": "200",
+                    "texto": "OK"
+                },
+                "headers": [
+                    f"Content-type: {content_type}",
+                    f"Content-length: {content_length}",
+                    "Connection: close"
+                ],
+                "body": body_byte
+            }
+
+            http_response = create_HTTP_message(responses)
+            print(http_response)
+            new_socket.send(http_response)
+            print("respuesta enviada")
             
-            print(f"tipo: {parsed_dict.get('tipo')}")
-            print(f"start line: {parsed_dict.get('start_line')}")
-            print(f"headers: {parsed_dict.get('headers')}")
-            print(f"body: {parsed_dict.get('body')}")
+            #print(f"tipo: {parsed_dict.get('tipo')}")
+            #print(f"start line: {parsed_dict.get('start_line')}")
+            #print(f"headers: {parsed_dict.get('headers')}")
+            #print(f"body: {parsed_dict.get('body')}")
 
-            print("ejecutando create HTTP")
-            create_bytes = create_HTTP_message(parsed_dict)
+            #print("ejecutando create HTTP")
+            #create_bytes = create_HTTP_message(parsed_dict)
 
-            print(create_bytes)
+            #print(create_bytes)
 
-            if recv_message == create_bytes:
-                print("Si")
-            else:
-                print("No")
+            #if recv_message == create_bytes:
+                #print("Si")
+            #else:
+                #print("No")
         
         new_socket.close()
         print(f"conexion con {client_address} ha sido cerrada")

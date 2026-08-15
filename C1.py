@@ -1,4 +1,6 @@
 import socket 
+import json
+import sys
 
 #Parsear mensaje HTTP
 def parse_HTTP_message(http_message: bytes):
@@ -88,6 +90,14 @@ def receive_full_message(connection_socket, buff_size, end_sequence):
 def contains_end_of_message(message, end_sequence):
     return end_sequence in message
 
+#Se obtiene ruta del archivo recibido
+config_route = sys.argv[1]
+
+#Abrimos el archivo del config
+with open(config_route) as file:
+    data = json.load(file)
+    name = data['usuario']['nombre']
+
 
 if __name__ == "__main__":
     buff_size = 1024
@@ -143,7 +153,7 @@ if __name__ == "__main__":
                 "headers": [
                     f"Content-type: {content_type}",
                     f"Content-length: {content_length}",
-                    "X-ElQuePregunta: Nahuel Won",
+                    "X-ElQuePregunta:" + name,
                     "Connection: close"
                 ],
                 "body": body_byte

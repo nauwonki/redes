@@ -90,13 +90,41 @@ def receive_full_message(connection_socket, buff_size, end_sequence):
 def contains_end_of_message(message, end_sequence):
     return end_sequence in message
 
+def get_destination(parsed_request):
+    host = None
+    port = 80
+
+    for h in parsed_request["headers"]:
+        if h.lower().startswith("host:"):
+            host_val = h.split(":", 1)[1].strip()
+            if ":" in host_val:
+                host, port_str = host_val.split(":")
+                port = int(port_str)
+            else:
+                host = host_val
+            break
+    return host, port
+
+def receive_until_close(connection_socket, buff_size):
+    full_message = b""
+    connection_socket.settimeout(2.0)
+    try:
+        while True:
+            c = connection_socket.recv(buff_size)
+            if len(c) == 0:
+                break
+            full_message += c
+    except socket.timeout:
+        pass
+    return full_message
+
 #Se obtiene ruta del archivo recibido
-config_route = sys.argv[1]
+#config_route = sys.argv[1]
 
 #Abrimos el archivo del config
-with open(config_route) as file:
-    data = json.load(file)
-    name = data['usuario']['nombre']
+#with open(config_route) as file:
+    #data = json.load(file)
+    #name = data['usuario']['nombre']
 
 
 if __name__ == "__main__":
@@ -104,7 +132,7 @@ if __name__ == "__main__":
     end_of_message = b"\r\n\r\n"
     new_socket_address = ('127.0.0.1', 8000)
 
-    print('Creando socket - Servidor')
+    print('Creando socket - Proxy')
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     server_socket.bind(new_socket_address)
@@ -112,57 +140,67 @@ if __name__ == "__main__":
 
     print('... Esperando clientes')
     while True:
-        new_socket, client_address = server_socket.accept()
+        client_socket, client_address = server_socket.accept()
         print(f"Conexion desde: {client_address}")
-        recv_message = receive_full_message(new_socket, buff_size, end_of_message)
+        client_request = receive_full_message(client_socket, buff_size, end_of_message)
 
-        print("Request recibida")
-        print(recv_message)
+        #print("Request recibida")
+        #print(recv_message)
 
-        if len(recv_message) > 0:
+        if len(client_request) > 0:
             print("ejecutando parse HTTP")
             #Al recibir mensaje, parsearlo
-            parsed_dict = parse_HTTP_message(recv_message)
+            parsed_request = parse_HTTP_message(client_request)
+            host, port = get_destination(parsed_request)
+            print(f"destino: {host}:{port}")
+
+            dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            
+            dest_socket.connect((host, port))
+            dest_socket.send(client_request)
+            server_res = receive_until_close(dest_socket, buff_size)
+            client_socket.send(server_res)
+            dest_socket.close()
             #HTML para ser mostrado en el navegador
-            html = """<!DOCTYPE html>
-                    <html lang="es">
-                    <head>
-                        <meta charset="UTF-8">
-                        <title>CC4303</title>
-                    </head>
-                    <body>
-                        <h1>Bienvenide ... oh? no puedo ver tu nombre :c!</h1>
-                        <h3><a href="replace">¿Qué es un proxy?</a></h3>
-                    </body>
-                    </html> """
-            body_byte = html.encode()
+            #html = """<!DOCTYPE html>
+            #        <html lang="es">
+            #       <head>
+            #            <meta charset="UTF-8">
+            #            <title>CC4303</title>
+            #        </head>
+            #        <body>
+            #            <h1>Bienvenide ... oh? no puedo ver tu nombre :c!</h1>
+            #            <h3><a href="replace">¿Qué es un proxy?</a></h3>
+            #        </body>
+            #        </html> """
+            #body_byte = html.encode()
 
             #Content length es el largo del html en bytes
-            content_length = len(body_byte)
+            #content_length = len(body_byte)
             #Content type siempre es text/html
-            content_type = "text/html"
+            #content_type = "text/html"
 
             #Armar estructura del response
-            responses = {
-                "tipo": "Response",
-                "start_line": {
-                    "version": "HTTP/1.1",
-                    "codigo": "200",
-                    "texto": "OK"
-                },
-                "headers": [
-                    f"Content-type: {content_type}",
-                    f"Content-length: {content_length}",
-                    "X-ElQuePregunta:" + name,
-                    "Connection: close"
-                ],
-                "body": body_byte
-            }
+            #responses = {
+            #    "tipo": "Response",
+            #    "start_line": {
+            #        "version": "HTTP/1.1",
+            #        "codigo": "200",
+            #        "texto": "OK"
+            #    },
+            #    "headers": [
+            #        f"Content-type: {content_type}",
+            #        f"Content-length: {content_length}",
+            #        "X-ElQuePregunta:" + name,
+            #        "Connection: close"
+            #    ],
+            #    "body": body_byte
+            #}
 
-            http_response = create_HTTP_message(responses)
-            print(http_response)
-            new_socket.send(http_response)
-            print("respuesta enviada")
+            #http_response = create_HTTP_message(responses)
+            #print(http_response)
+            #new_socket.send(http_response)
+            #print("respuesta enviada")
             
             #print(f"tipo: {parsed_dict.get('tipo')}")
             #print(f"start line: {parsed_dict.get('start_line')}")
@@ -179,5 +217,5 @@ if __name__ == "__main__":
             #else:
                 #print("No")
         
-        new_socket.close()
+        client_socket.close()
         print(f"conexion con {client_address} ha sido cerrada")

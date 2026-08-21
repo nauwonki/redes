@@ -118,6 +118,65 @@ def receive_until_close(connection_socket, buff_size):
         pass
     return full_message
 
+def load_blocked_sites(filename="config.json"):
+    block = []
+    with open(filename, "r") as f:
+        c = f.read()
+        if "blocked" in c:
+            separate_block = c.split('"blocked"', 1)[1].split("]", 1)[0]
+            i = separate_block.split("[", 1)[-1].split(",")
+            for item in i:
+                stripped = item.strip().strip('""').strip("'").strip()
+                if stripped:
+                    block.append(stripped)
+    return block
+
+def is_blocked(parsed_request, blocked):
+    host, _ = get_destination(parsed_request)
+    path = parsed_request["start_line"].get("direccion", "")
+    url = f"{host}{path}" if host else path
+
+    for b in blocked:
+        c = b.replace("http://", "")
+        if c in url or (host and c in host):
+            return True
+    return False
+
+def response_403():
+    html = """<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>403 Forbidden</title>
+</head>
+<body>
+    <h1>403 Forbidden - Acceso Denegado</h1>
+    <p>El sitio web al que intentas acceder está bloqueado por el Proxy.</p>
+    <img src="/gato.jpg" alt="Sitio Bloqueado">
+</body>
+</html>"""
+    body = html.encode()
+    res = [
+        "HTTP/1.1 403 Forbidden",
+        "Content-Type: text/html",
+        f"Content-length: {len(body)}"
+        "Connection: close"
+    ]
+    headers = "\r\n".join(res) + "\r\n\r\n"
+    return headers.encode() + body
+
+def build_image(image="gato.jpg"):
+    with open(image, "rb") as f:
+        image_byte = f.read()
+    res = [
+        "HTTP/1.1 200 OK",
+        "Content-Type: image/jpeg",
+        f"Content-Length: {len(image_byte)}",
+        "Connection: close"
+    ]
+    headers = "\r\n".join(res) + "\r\n\r\n"
+    return headers.encode() + image_byte
+
 #Se obtiene ruta del archivo recibido
 #config_route = sys.argv[1]
 
@@ -128,7 +187,8 @@ def receive_until_close(connection_socket, buff_size):
 
 
 if __name__ == "__main__":
-    buff_size = 1024
+    blocked = load_blocked_sites("config.json")
+    buff_size = 4096
     end_of_message = b"\r\n\r\n"
     new_socket_address = ('127.0.0.1', 8000)
 
@@ -136,7 +196,7 @@ if __name__ == "__main__":
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     server_socket.bind(new_socket_address)
-    server_socket.listen(3)
+    server_socket.listen(5)
 
     print('... Esperando clientes')
     while True:
@@ -151,16 +211,25 @@ if __name__ == "__main__":
             print("ejecutando parse HTTP")
             #Al recibir mensaje, parsearlo
             parsed_request = parse_HTTP_message(client_request)
-            host, port = get_destination(parsed_request)
-            print(f"destino: {host}:{port}")
-
-            dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            path = parsed_request["start_line"].get("direccion", "")
             
-            dest_socket.connect((host, port))
-            dest_socket.send(client_request)
-            server_res = receive_until_close(dest_socket, buff_size)
-            client_socket.send(server_res)
-            dest_socket.close()
+            if path.endswith("gato.jpg"):
+                print("peticion recibida imagen gato")
+                client_socket.send(build_image("gato.jpg"))
+            elif is_blocked(parsed_request, blocked):
+                print("sitio bloqueado")
+                client_socket.send(response_403())
+            else:
+                host, port = get_destination(parsed_request)
+                print(f"destino: {host}:{port}")
+
+                dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                
+                dest_socket.connect((host, port))
+                dest_socket.send(client_request)
+                server_res = receive_until_close(dest_socket, buff_size)
+                client_socket.send(server_res)
+                dest_socket.close()
             #HTML para ser mostrado en el navegador
             #html = """<!DOCTYPE html>
             #        <html lang="es">

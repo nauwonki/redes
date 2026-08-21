@@ -1,6 +1,4 @@
 import socket 
-import json
-import sys
 
 #Parsear mensaje HTTP
 def parse_HTTP_message(http_message: bytes):
@@ -159,7 +157,7 @@ def response_403():
     res = [
         "HTTP/1.1 403 Forbidden",
         "Content-Type: text/html",
-        f"Content-length: {len(body)}"
+        f"Content-length: {len(body)}",
         "Connection: close"
     ]
     headers = "\r\n".join(res) + "\r\n\r\n"
@@ -177,6 +175,11 @@ def build_image(image="gato.jpg"):
     headers = "\r\n".join(res) + "\r\n\r\n"
     return headers.encode() + image_byte
 
+def add_header(parsed_request, header):
+    parsed = dict(parsed_request)
+    parsed["headers"] = parsed_request["headers"] + [header]
+    return parsed
+
 #Se obtiene ruta del archivo recibido
 #config_route = sys.argv[1]
 
@@ -185,6 +188,7 @@ def build_image(image="gato.jpg"):
     #data = json.load(file)
     #name = data['usuario']['nombre']
 
+mi_nombre = "Nahuel Won"
 
 if __name__ == "__main__":
     blocked = load_blocked_sites("config.json")
@@ -223,10 +227,13 @@ if __name__ == "__main__":
                 host, port = get_destination(parsed_request)
                 print(f"destino: {host}:{port}")
 
+                parsed_request_header = add_header(parsed_request, f"X-ElQuePregunta: {mi_nombre}")
+                send_request = create_HTTP_message(parsed_request_header)
+
                 dest_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 
                 dest_socket.connect((host, port))
-                dest_socket.send(client_request)
+                dest_socket.send(send_request)
                 server_res = receive_until_close(dest_socket, buff_size)
                 client_socket.send(server_res)
                 dest_socket.close()
